@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi Zero Sensor Node — publishes system stats to EdgeX IoT Gateway
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 -u /home/shivam/sensor_node.py
+Restart=always
+RestartSec=5
+User=shivam
+WorkingDirectory=/home/shivam
+
+[Install]
+WantedBy=multi-user.target
