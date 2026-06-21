@@ -1,0 +1,11 @@
+v2.2 — Full-screen chart modal + PWA + mobile responsive
+
+• Full-screen chart modal with Canvas API
+• Time filters: 1h, 2h, 5h, 1d, 7d
+• Resource tabs: Temp, CPU, Mem, Uptime, WiFi
+• Hover tooltips with value + time
+• Chart stats: avg, min, max, points
+• PWA manifest + service worker
+• Mobile responsive layout + touch optimization
+• CPU load deadband reduced to 1%
+• Heartbeat interval reduced to 30s

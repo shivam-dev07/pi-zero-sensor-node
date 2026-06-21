@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pi Zero Dashboard">
+<link rel="manifest" href="/manifest.json">
+<title>Pi Zero Sensor Dashboard</title>
+<style>
+:root{
+  --bg:#0a0e17;--bg2:#111827;
+  --card:rgba(17,24,39,.78);
+  --brd:rgba(75,85,99,.18);
+  --txt:#f1f5f9;--txt2:#94a3b8;--txt3:#64748b;
+  --cy:#06b6d4;--cyg:rgba(6,182,212,.35);
+  --gn:#10b981;--gng:rgba(16,185,129,.35);
+  --ay:#f59e0b;--ayg:rgba(245,158,11,.35);
+  --pu:#8b5cf6;--rd:#ef4444;
+  --r:14px;--rs:10px;
+  --p:18px;--font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-overflow-scrolling:touch}
+body{
+  font-family:var(--font);background:var(--bg);color:var(--txt);
+  min-height:100vh;min-height:100dvh;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+.bg-g{
+  position:fixed;inset:0;
+  background-image:linear-gradient(rgba(56,189,248,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.03) 1px,transparent 1px);
+  background-size:32px 32px;pointer-events:none;z-index:0;
+}
+.bg-o{
+  position:fixed;inset:0;
+  background:radial-gradient(ellipse 70vw 50vh at 20% 50%,rgba(6,182,212,.06),transparent),radial-gradient(ellipse 50vw 40vh at 80% 20%,rgba(139,92,246,.04),transparent);
+  pointer-events:none;z-index:0;
+}
+/* HEADER */
+header{
+  position:sticky;top:0;z-index:10;
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  background:rgba(10,14,23,.7);
+  border-bottom:1px solid var(--brd);
+  padding:var(--p);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.hl{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.logo{
+  flex-shrink:0;width:38px;height:38px;
+  background:linear-gradient(135deg,var(--cy),var(--pu));border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:800;color:#fff;
+  box-shadow:0 0 24px rgba(6,182,212,.2);
+}
+.ht{min-width:0}
+.ht h1{
+  font-size:17px;font-weight:700;
+  background:linear-gradient(135deg,#e2e8f0,#94a3b8);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ht .sb{font-size:11px;color:var(--txt3);margin-top:1px;display:flex;align-items:center;gap:6px}
+.hr{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lb{
+  display:flex;align-items:center;gap:5px;
+  padding:4px 10px;border-radius:12px;
+  font-size:10px;font-weight:600;white-space:nowrap;
+  background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);color:var(--gn);
+}
+.ld{width:6px;height:6px;border-radius:50%;background:var(--gn);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,.4)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(16,185,129,0)}}
+.rbtn{
+  flex-shrink:0;width:34px;height:34px;
+  background:var(--card);border:1px solid var(--brd);border-radius:8px;
+  color:var(--txt2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;
+}
+.rbtn svg{width:15px;height:15px}
+.rbtn:active{transform:scale(.92)}
+.rbtn.sp svg{animation:spin .5s linear}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* STATS BAR */
+.sb{
+  margin:12px var(--p) 0;padding:10px 14px;
+  background:var(--card);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1px solid var(--brd);border-radius:var(--rs);
+  display:flex;justify-content:space-around;flex-wrap:wrap;gap:6px;
+}
+.si{display:flex;flex-direction:column;align-items:center;gap:1px}
+.sv{font-size:14px;font-weight:700;color:var(--txt2)}
+.sl{font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em}
+
+/* MAIN */
+main{padding:12px var(--p) calc(var(--p)*3);max-width:1200px;margin:0 auto;position:relative;z-index:1}
+.dg{display:flex;flex-direction:column;gap:14px}
+
+/* CARD */
+.cd{
+  background:var(--card);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;position:relative;
+}
+.cd::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--cy),transparent);opacity:.5;transition:.3s;
+}
+.cdh{
+  padding:12px 14px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--brd);
+}
+.cdn{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.ci{
+  flex-shrink:0;width:32px;height:32px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+}
+.ci.z1{background:linear-gradient(135deg,rgba(6,182,212,.2),rgba(6,182,212,.05));color:var(--cy)}
+.ci.z2{background:linear-gradient(135deg,rgba(139,92,246,.2),rgba(139,92,246,.05));color:var(--pu)}
+.ct{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cts{font-size:10px;color:var(--txt3)}
+.cs{
+  flex-shrink:0;display:flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:600;padding:3px 10px;border-radius:10px;
+}
+.cs.up{background:rgba(16,185,129,.1);color:var(--gn)}
+.cs.dn{background:rgba(239,68,68,.1);color:var(--rd)}
+.sd{width:5px;height:5px;border-radius:50%;display:inline-block}
+.sd.up{background:var(--gn)}
+.sd.dn{background:var(--rd);animation:pulse 1.5s infinite}
+
+.bd{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+
+/* GAUGE */
+.gr{display:flex;align-items:center;gap:14px;background:rgba(0,0,0,.2);border-radius:var(--rs);padding:12px 14px}
+.gw{flex-shrink:0;position:relative}
+.gs{width:88px;height:88px;transform:rotate(-90deg);display:block}
+.gb{fill:none;stroke:rgba(255,255,255,.04);stroke-width:7}
+.gf{fill:none;stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset .6s,stroke .3s}
+.gf.co{stroke:var(--cy);filter:drop-shadow(0 0 6px var(--cyg))}
+.gf.wa{stroke:var(--ay);filter:drop-shadow(0 0 6px var(--ayg))}
+.gf.ho{stroke:var(--rd);filter:drop-shadow(0 0 6px rgba(239,68,68,.35))}
+.gc{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.gv{font-size:22px;font-weight:700;line-height:1}
+.gu{font-size:9px;color:var(--txt3);margin-top:1px}
+.gi{flex:1;min-width:0}
+.gi h3{font-size:12px;font-weight:600;color:var(--txt2);margin-bottom:4px}
+.gt{display:flex;flex-wrap:wrap;gap:8px}
+.gt dl{}
+.gt dt{font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em}
+.gt dd{font-size:13px;font-weight:600;margin-top:1px}
+
+/* METRIC GRID */
+.mg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mc{background:rgba(0,0,0,.2);border-radius:var(--rs);padding:10px 12px}
+.mc.s2{grid-column:1/-1}
+.mh{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.mn{font-size:10px;font-weight:500;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv{font-size:14px;font-weight:700;white-space:nowrap}
+.mv.gn{color:var(--gn)}.mv.ay{color:var(--ay)}.mv.rd{color:var(--rd)}.mv.cy{color:var(--cy)}.mv.pu{color:var(--pu)}
+.mv .s{font-size:10px;font-weight:400;color:var(--txt3)}
+.tr{width:100%;height:5px;background:rgba(255,255,255,.04);border-radius:3px;overflow:hidden}
+.fl{height:100%;border-radius:3px;transition:width .5s,background .3s;min-width:3px}
+.fl.gn{background:linear-gradient(90deg,var(--gn),var(--gng))}
+.fl.ay{background:linear-gradient(90deg,var(--ay),var(--ayg))}
+.fl.rd{background:linear-gradient(90deg,var(--rd),rgba(239,68,68,.35))}
+.fl.cy{background:linear-gradient(90deg,var(--cy),var(--cyg))}
+
+/* WIFI */
+.wr{display:flex;align-items:center;gap:10px}
+.wb{display:flex;align-items:flex-end;gap:2px;height:28px}
+.wi{}.wv{font-size:16px;font-weight:700}.wl{font-size:9px;color:var(--txt3)}
+
+/* SPARKLINE (clickable) */
+.sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.sh .tl{font-size:10px;font-weight:500;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em}
+.sr{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.si{flex:1;min-width:0;cursor:pointer;border-radius:6px;padding:4px;transition:background .15s}
+.si:active{background:rgba(255,255,255,.04)}
+.sl{display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px;pointer-events:none}
+.sl .nm{color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl .nv{font-weight:600;white-space:nowrap;pointer-events:none}
+.sp{width:100%;height:32px;display:block;pointer-events:none}
+
+/* FOOTER */
+.ft{
+  padding:10px 14px;border-top:1px solid var(--brd);
+  display:flex;gap:12px;flex-wrap:wrap;overflow-x:auto;
+}
+.ft dl{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--txt3);white-space:nowrap}
+.ft dt{font-weight:500;color:var(--txt2)}
+
+/* ERROR / FOOTER BAR */
+.eb{
+  margin:12px 16px 0;padding:10px 14px;border-radius:var(--rs);
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);
+  color:var(--rd);font-size:12px;display:none;align-items:center;gap:8px
+}
+.eb.sh{display:flex}
+
+.fb{text-align:center;font-size:10px;color:var(--txt3);padding:20px 16px;opacity:.5}
+
+/* ═══════════════════════════════════════════════════════
+   MODAL — FULL SCREEN CHART
+   ═══════════════════════════════════════════════════════ */
+.modal-overlay{
+  position:fixed;inset:0;z-index:1000;
+  background:rgba(5,8,15,.85);
+  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  display:none;flex-direction:column;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.modal-overlay.open{display:flex;}
+
+.modal-hd{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;flex-shrink:0;
+  border-bottom:1px solid var(--brd);
+}
+.modal-hd .mh-left{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.modal-hd .mh-left .mh-icon{
+  width:32px;height:32px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;
+}
+.modal-hd .mh-left .mh-icon.z1{background:rgba(6,182,212,.15);color:var(--cy)}
+.modal-hd .mh-left .mh-icon.z2{background:rgba(139,92,246,.15);color:var(--pu)}
+.modal-hd .mh-left .mh-info{min-width:0}
+.modal-hd .mh-left .mh-device{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modal-hd .mh-left .mh-resource{font-size:11px;color:var(--txt3)}
+.modal-hd .mh-close{
+  flex-shrink:0;width:34px;height:34px;border:none;border-radius:8px;
+  background:rgba(255,255,255,.06);color:var(--txt2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:18px;transition:.2s;
+}
+.modal-hd .mh-close:active{background:rgba(255,255,255,.1);transform:scale(.92)}
+
+/* MODAL TIME FILTERS */
+.modal-filters{
+  display:flex;align-items:center;gap:6px;
+  padding:12px 20px;flex-shrink:0;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+}
+.mf-btn{
+  flex-shrink:0;
+  padding:6px 14px;border-radius:8px;
+  border:1px solid var(--brd);background:rgba(255,255,255,.03);
+  color:var(--txt2);font-size:12px;font-weight:500;cursor:pointer;transition:.2s;white-space:nowrap;
+}
+.mf-btn:active{transform:scale(.95)}
+.mf-btn.active{
+  background:linear-gradient(135deg,rgba(6,182,212,.15),rgba(139,92,246,.1));
+  border-color:var(--cy);color:var(--cy);font-weight:600;
+}
+.mf-btn.loading{opacity:.5;pointer-events:none}
+.mf-spacer{flex:1;min-width:4px}
+
+/* MODAL RESOURCE TABS */
+.modal-tabs{
+  display:flex;gap:4px;padding:0 20px 12px;flex-shrink:0;overflow-x:auto;
+}
+.mt-btn{
+  padding:5px 12px;border-radius:6px;border:none;
+  background:rgba(255,255,255,.04);color:var(--txt3);cursor:pointer;
+  font-size:11px;font-weight:500;transition:.2s;white-space:nowrap;
+}
+.mt-btn:active{transform:scale(.95)}
+.mt-btn.active{background:rgba(255,255,255,.1);color:var(--txt)}
+.mt-btn .mt-dot{
+  display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:middle;
+}
+
+/* MODAL CHART AREA */
+.modal-chart{
+  flex:1;position:relative;min-height:0;
+  padding:0 16px 16px;
+  display:flex;flex-direction:column;
+}
+.modal-chart canvas{
+  position:absolute;inset:16px 16px 28px;
+  width:calc(100% - 32px);height:calc(100% - 44px);
+}
+.modal-chart .chart-x-label{
+  position:absolute;bottom:4px;left:16px;right:16px;
+  text-align:center;font-size:9px;color:var(--txt3);
+}
+.modal-chart .chart-pointer{
+  position:absolute;display:none;
+  transform:translate(-50%,-100%);
+  padding:6px 10px;border-radius:6px;
+  background:rgba(10,14,23,.9);border:1px solid var(--brd);
+  font-size:11px;text-align:center;pointer-events:none;z-index:5;
+}
+.modal-chart .chart-pointer .cp-val{font-weight:600;font-size:13px}
+.modal-chart .chart-pointer .cp-time{font-size:9px;color:var(--txt3)}
+
+/* MODAL STATS */
+.modal-stats{
+  flex-shrink:0;display:flex;gap:20px;padding:8px 20px 16px;
+  border-top:1px solid var(--brd);overflow-x:auto;
+}
+.ms-item{display:flex;flex-direction:column;gap:1px}
+.ms-val{font-size:14px;font-weight:700}
+.ms-lbl{font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em}
+.ms-item .ms-val.min{color:var(--cy)}
+.ms-item .ms-val.max{color:var(--rd)}
+.ms-item .ms-val.avg{color:var(--gn)}
+
+/* PWA INSTALL BANNER */
+.ib{
+  position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:rgba(17,24,39,.95);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border-top:1px solid var(--brd);
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  display:none;align-items:center;justify-content:space-between;gap:10px;
+}
+.ib.sh{display:flex}
+.ib .ibt{font-size:12px;flex:1}
+.ib .ibt strong{color:var(--txt)}
+.ib .ibc{
+  width:28px;height:28px;border-radius:6px;border:none;
+  background:rgba(255,255,255,.05);color:var(--txt3);cursor:pointer;font-size:14px;
+}
+.ib .ibb{
+  padding:8px 16px;border-radius:8px;border:none;
+  background:linear-gradient(135deg,var(--cy),var(--pu));color:#fff;
+  font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;
+}
+
+/* RESPONSIVE */
+@media(min-width:768px){
+  .dg{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .gs{width:100px;height:100px}.gv{font-size:24px}
+  .sb{padding:12px 20px;display:flex;justify-content:center;gap:32px}
+  :root{--p:24px}
+}
+@media(max-width:380px){
+  .ht .sb{font-size:10px;flex-wrap:wrap}
+  .lb{font-size:9px;padding:3px 8px}.logo{width:32px;height:32px;font-size:14px}
+  .ht h1{font-size:14px}.gs{width:72px;height:72px}.gv{font-size:18px}.mv{font-size:12px}
+  header{padding:10px 12px}main{padding:10px 12px}.bd{padding:8px 10px}
+  .gr{padding:8px 10px;gap:10px}.cdh{padding:10px 12px}
+}
+</style>
+</head>
+<body>
+
+<div class="bg-g"></div>
+<div class="bg-o"></div>
+
+<!-- HEADER -->
+<header>
+  <div class="hl">
+    <div class="logo">Π</div>
+    <div class="ht">
+      <h1>Pi Zero Dashboard</h1>
+      <div class="sb"><span id="timeDisplay">--:--</span> • <span id="nodeStatusDash">2/2</span></div>
+    </div>
+  </div>
+  <div class="hr">
+    <span class="lb"><span class="ld"></span>LIVE</span>
+    <button class="rbtn" onclick="refreshNow()" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="eb" id="errorBanner"><span>⚠️</span><span id="errorText">Error</span></div>
+
+<!-- STATS -->
+<div class="sb">
+  <div class="si"><span class="sv" id="totalReadings">--</span><span class="sl">Readings</span></div>
+  <div class="si"><span class="sv" id="timeAgo">--</span><span class="sl">Updated</span></div>
+  <div class="si"><span class="sv" id="nodesOnline">--/2</span><span class="sl">Nodes</span></div>
+  <div class="si"><span class="sv">10s</span><span class="sl">Auto</span></div>
+</div>
+
+<!-- DASHBOARD -->
+<main><div class="dg" id="deviceGrid"></div></main>
+<div class="fb">Pi Zero Sensor Dashboard • Tap a sparkline for full chart</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     FULL-SCREEN CHART MODAL
+     ═══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="chartModal">
+  <div class="modal-hd">
+    <div class="mh-left">
+      <div class="mh-icon" id="mhIcon">Z1</div>
+      <div class="mh-info">
+        <div class="mh-device" id="mhDevice">pizero1</div>
+        <div class="mh-resource" id="mhResource">CPU Temperature</div>
+      </div>
+    </div>
+    <button class="mh-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="modal-filters">
+    <button class="mf-btn active" data-hours="1" onclick="setModalRange(this,1)">1h</button>
+    <button class="mf-btn" data-hours="2" onclick="setModalRange(this,2)">2h</button>
+    <button class="mf-btn" data-hours="5" onclick="setModalRange(this,5)">5h</button>
+    <button class="mf-btn" data-hours="24" onclick="setModalRange(this,24)">1d</button>
+    <button class="mf-btn" data-hours="168" onclick="setModalRange(this,168)">7d</button>
+    <div class="mf-spacer"></div>
+  </div>
+  <div class="modal-tabs" id="modalTabs"></div>
+  <div class="modal-chart" id="modalChartArea">
+    <canvas id="chartCanvas"></canvas>
+    <div class="chart-pointer" id="chartPointer">
+      <div class="cp-val" id="cpVal">--</div>
+      <div class="cp-time" id="cpTime">--</div>
+    </div>
+    <div class="chart-x-label" id="chartXLabel">scroll for more</div>
+  </div>
+  <div class="modal-stats" id="modalStats">
+    <div class="ms-item"><span class="ms-val avg" id="msAvg">--</span><span class="ms-lbl">Average</span></div>
+    <div class="ms-item"><span class="ms-val min" id="msMin">--</span><span class="ms-lbl">Min</span></div>
+    <div class="ms-item"><span class="ms-val max" id="msMax">--</span><span class="ms-lbl">Max</span></div>
+    <div class="ms-item"><span class="ms-val" style="color:var(--txt2)" id="msPoints">--</span><span class="ms-lbl">Points</span></div>
+  </div>
+</div>
+
+<!-- PWA INSTALL -->
+<div class="ib" id="installBanner">
+  <div class="ibt"><strong>Install Dashboard</strong><br><span style="color:var(--txt3)">Add to home screen</span></div>
+  <button class="ibc" onclick="dismissInstall()">✕</button>
+  <button class="ibb" id="installBtn">Install</button>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// ENGINE
+// ═══════════════════════════════════════════════════════════════════
+const GR=42,GC=2*Math.PI*GR,RF=1e4;
+let rt=null;
+
+function gc(v){return v>=75?'ho':v>=60?'wa':'co'}
+function go(v,mn=0,mx=100){return GC*(1-Math.min(Math.max((v-mn)/(mx-mn),0),1))}
+function bc(v,w=60,c=80){return v>=c?'rd':v>=w?'ay':'gn'}
+function val(v){return typeof v==='object'?(v.v??v.value??0):(v??0)}
+function num(v){v=parseFloat(v);return isNaN(v)?0:v}
+
+function renderGauge(el,t,l,u,mn=0,mx=100){
+  const c=gc(t),o=go(t,mn,mx),cc=c==='co'?'var(--cy)':c==='wa'?'var(--ay)':'var(--rd)';
+  const st=c==='co'?'Normal':c==='wa'?'Warm':'Critical';
+  el.innerHTML=`<div class="gw"><svg class="gs" viewBox="0 0 96 96"><circle class="gb" cx="48" cy="48" r="${GR}"/><circle class="gf ${c}" cx="48" cy="48" r="${GR}" stroke-dasharray="${GC}" stroke-dashoffset="${o}"/></svg><div class="gc"><div class="gv" style="color:${cc}">${t.toFixed(1)}</div><div class="gu">${u}</div></div></div><div class="gi"><h3>${l}</h3><div class="gt"><dl><dt>Status</dt><dd style="color:${cc}">${st}</dd></dl><dl><dt>Max Safe</dt><dd>${mx}${u}</dd></dl></div></div>`;
+}
+
+function renderBar(el,v,l,u,cv){
+  const c=cv||bc(v),p=Math.min(v,100);
+  el.innerHTML=`<div class="mh"><div class="mn">${l}</div><div class="mv ${c}">${v.toFixed(1)} <span class="s">${u}</span></div></div><div class="tr"><div class="fl ${c}" style="width:${p}%"></div></div>`;
+}
+
+function renderWifi(el,d){
+  const b=d>=-50?4:d>=-65?3:d>=-75?2:d>=-85?1:0,q=b>=4?'Excellent':b>=3?'Good':b>=2?'Fair':'Weak';
+  const c=b>=3?'var(--gn)':b>=2?'var(--ay)':'var(--rd)';
+  el.innerHTML=`<div class="wr"><div class="wb">${Array.from({length:4},(_,i)=>`<div style="width:${6+i*3}px;height:${4+i*5}px;border-radius:2px;background:${i<b?c:'rgba(255,255,255,.05)'}"></div>`).join('')}</div><div class="wi"><div class="wv" style="color:${c}">${d} <span style="font-size:10px;font-weight:400;color:var(--txt3)">dBm</span></div><div class="wl">${q}</div></div></div>`;
+}
+
+function renderSpark(el,d,c){
+  if(!d||d.length<2){el.innerHTML=`<svg class="sp" viewBox="0 0 200 32"><text x="100" y="18" text-anchor="middle" fill="var(--txt3)" font-size="10" font-family="var(--font)">tap to expand</text></svg>`;return;}
+  const v=d.map(x=>val(x)),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1,w=200,h=32;
+  const p=v.map((x,i)=>`${(i/(v.length-1))*w},${h-((x-mn)/r)*(h-4)-2}`),pts=p.join(' ');
+  el.innerHTML=`<svg class="sp" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="sg-${c.slice(1)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c}" stop-opacity=".2"/><stop offset="100%" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><polygon fill="url(#sg-${c.slice(1)})" opacity=".15" points="0,${h} ${pts} ${w},${h}"/><polyline fill="none" stroke="${c}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}"/><circle cx="${p[v.length-1].split(',')[0]}" cy="${p[v.length-1].split(',')[1]}" r="2" fill="${c}" stroke="var(--bg)" stroke-width="1"/></svg>`;
+}
+
+/* Build card */
+function buildCard(id,d){
+  const lat=d.latest||{},hist=d.history||{},up=d.status==='UP',ic=id==='pizero1'?'z1':'z2';
+  const t=val(lat.cpu_temp_c),l=val(lat.cpu_load),m=val(lat.memory_used_pct),upv=val(lat.uptime_s),w=val(lat.wifi_signal_dbm);
+  return `<div class="cd" id="c-${id}"><div class="cdh"><div class="cdn"><div class="ci ${ic}">${id==='pizero1'?'Z1':'Z2'}</div><div><div class="ct">${id}</div><div class="cts">Pi Zero 2W</div></div></div><div class="cs ${up?'up':'dn'}"><span class="sd ${up?'up':'dn'}"></span>${up?'UP':'DOWN'}</div></div><div class="bd"><div class="gr" id="g-${id}"></div><div class="mg"><div class="mc" id="l-${id}"></div><div class="mc" id="mem-${id}"></div><div class="mc" id="w-${id}"></div><div class="mc" id="u-${id}"></div><div class="mc s2"><div class="sh"><div class="tl">History</div></div><div class="sr"><div class="si" onclick="openModal('${id}','cpu_temp_c','CPU Temperature','var(--cy)')"><div class="sl"><span class="nm">Temp</span><span class="nv" style="color:var(--cy)">${t.toFixed(1)}°C</span></div><div id="st-${id}"></div></div><div class="si" onclick="openModal('${id}','cpu_load','CPU Load','var(--gn)')"><div class="sl"><span class="nm">CPU</span><span class="nv" style="color:var(--gn)">${l.toFixed(1)}%</span></div><div id="sl-${id}"></div></div><div class="si" onclick="openModal('${id}','memory_used_pct','Memory','var(--ay)')"><div class="sl"><span class="nm">Mem</span><span class="nv" style="color:var(--ay)">${m.toFixed(1)}%</span></div><div id="sm-${id}"></div></div></div></div></div></div><div class="ft"><dl><dt>Uptime</dt><dd>${Math.floor(upv)}h ${Math.floor((upv-Math.floor(upv))*60)}m</dd></dl><dl><dt>WiFi</dt><dd>${w} dBm</dd></dl><dl><dt>Data</dt><dd>${Object.values(hist).reduce((a,b)=>a+b.length,0)}+</dd></dl></div></div>`;
+}
+
+function updateMetrics(id,d){
+  const lat=d.latest||{},hist=d.history||{};
+  const t=val(lat.cpu_temp_c),l=val(lat.cpu_load),m=val(lat.memory_used_pct),upv=val(lat.uptime_s),w=val(lat.wifi_signal_dbm);
+  const g=document.getElementById('g-'+id);if(g)renderGauge(g,t,'CPU Temperature','°C',0,90);
+  const L=document.getElementById('l-'+id);if(L)renderBar(L,l,'CPU Load','%');
+  const M=document.getElementById('mem-'+id);if(M)renderBar(M,m,'Memory','%');
+  const W=document.getElementById('w-'+id);if(W)renderWifi(W,w);
+  const U=document.getElementById('u-'+id);if(U){const h=Math.floor(upv),mi=Math.floor((upv-h)*60);U.innerHTML=`<div class="mh"><div class="mn">Uptime</div><div class="mv pu">${h}<span class="s">h</span> ${mi}<span class="s">m</span></div></div>`;}
+  if(document.getElementById('st-'+id))renderSpark(document.getElementById('st-'+id),hist.cpu_temp_c||[],'var(--cy)');
+  if(document.getElementById('sl-'+id))renderSpark(document.getElementById('sl-'+id),hist.cpu_load||[],'var(--gn)');
+  if(document.getElementById('sm-'+id))renderSpark(document.getElementById('sm-'+id),hist.memory_used_pct||[],'var(--ay)');
+}
+
+/* Fetch + Render */
+async function fetchData(){
+  const btn=document.querySelector('.rbtn'),err=document.getElementById('errorBanner'),et=document.getElementById('errorText');
+  btn?.classList.add('sp');err?.classList.remove('sh');
+  try{
+    const r=await fetch('/api/readings');if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const p=await r.json();if(p.error)throw new Error(p.error);
+    const devs=p.devices||{};
+    document.getElementById('totalReadings').textContent=p.totalReadings?p.totalReadings.toLocaleString():'--';
+    const now=new Date(),online=Object.values(devs).filter(x=>x.status==='UP').length,total=Object.keys(devs).length;
+    document.getElementById('nodesOnline').textContent=online+'/'+total;
+    document.getElementById('nodesOnline').style.color=online===total?'var(--gn)':'var(--ay)';
+    document.getElementById('nodeStatusDash').textContent=online+'/'+total;
+    document.getElementById('timeAgo').textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('timeDisplay').textContent=now.toLocaleTimeString();
+    const grid=document.getElementById('deviceGrid');
+    grid.innerHTML=Object.entries(devs).sort().map(([id,dd])=>buildCard(id,dd)).join('');
+    Object.entries(devs).forEach(([id,dd])=>updateMetrics(id,dd));
+  }catch(e){et.textContent='Connection failed — retrying...';err?.classList.add('sh');}
+  finally{btn?.classList.remove('sp');}
+}
+function refreshNow(){clearTimeout(rt);fetchData().then(()=>{rt=setTimeout(refreshNow,RF);});}
+
+// ═══════════════════════════════════════════════════════════════════
+// FULL-SCREEN CHART MODAL
+// ═══════════════════════════════════════════════════════════════════
+
+let modalState={device:'',resource:'',label:'',color:'',hours:1,data:[],resources:[]};
+const RESOURCE_META={
+  cpu_temp_c:{label:'CPU Temperature',unit:'°C',color:'var(--cy)'},
+  cpu_load:{label:'CPU Load',unit:'%',color:'var(--gn)'},
+  memory_used_pct:{label:'Memory',unit:'%',color:'var(--ay)'},
+  uptime_s:{label:'Uptime',unit:'h',color:'var(--pu)'},
+  wifi_signal_dbm:{label:'WiFi Signal',unit:'dBm',color:'var(--rd)'}
+};
+
+function openModal(device,resource,label,color){
+  const modal=document.getElementById('chartModal');
+  modal.classList.add('open');
+
+  // Header
+  document.getElementById('mhDevice').textContent=device;
+  document.getElementById('mhResource').textContent=label;
+  const icon=document.getElementById('mhIcon');
+  icon.textContent=device==='pizero1'?'Z1':'Z2';
+  icon.className='mh-icon '+(device==='pizero1'?'z1':'z2');
+
+  modalState={device,resource,label,color,hours:1,data:[],resources:[]};
+  document.querySelectorAll('.mf-btn').forEach(b=>b.classList.toggle('active',b.dataset.hours=='1'));
+
+  // Build resource tabs
+  const tabs=document.getElementById('modalTabs');
+  const resList=['cpu_temp_c','cpu_load','memory_used_pct','uptime_s','wifi_signal_dbm'];
+  tabs.innerHTML=resList.map(r=>{
+    const meta=RESOURCE_META[r];
+    const active=r===resource?'active':'';
+    return `<button class="mt-btn ${active}" data-resource="${r}" onclick="switchResource('${r}')"><span class="mt-dot" style="background:${meta.color}"></span>${meta.label}</button>`;
+  }).join('');
+
+  loadChartData(1);
+}
+
+function closeModal(){
+  document.getElementById('chartModal').classList.remove('open');
+}
+
+function setModalRange(btn,hours){
+  document.querySelectorAll('.mf-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadChartData(hours);
+}
+
+function switchResource(resource){
+  const meta=RESOURCE_META[resource];
+  modalState.resource=resource;
+  modalState.label=meta.label;
+  modalState.color=meta.color;
+  document.getElementById('mhResource').textContent=meta.label;
+  document.querySelectorAll('.mt-btn').forEach(b=>b.classList.toggle('active',b.dataset.resource===resource));
+  loadChartData(modalState.hours);
+}
+
+async function loadChartData(hours){
+  modalState.hours=hours;
+  const btn=document.querySelector('.mf-btn.active');
+  if(btn)btn.classList.add('loading');
+
+  document.querySelectorAll('.mf-btn').forEach(b=>b.classList.toggle('loading',b.dataset.hours==hours));
+
+  try{
+    const d=modalState.device, r=modalState.resource;
+    const resp=await fetch(`/api/history?device=${d}&resource=${r}&range=${hours}`);
+    const data=await resp.json();
+    if(data.error)throw new Error(data.error);
+    modalState.data=data.data||[];
+    drawChart();
+    updateModalStats();
+  }catch(e){
+    console.error('Chart data error:',e);
+  }finally{
+    document.querySelectorAll('.mf-btn').forEach(b=>b.classList.remove('loading'));
+  }
+}
+
+function updateModalStats(){
+  const d=modalState.data;
+  if(!d||d.length===0){
+    document.getElementById('msAvg').textContent='--';
+    document.getElementById('msMin').textContent='--';
+    document.getElementById('msMax').textContent='--';
+    document.getElementById('msPoints').textContent='0';
+    return;
+  }
+  const vals=d.map(x=>x.v);
+  const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+  const min=Math.min(...vals);
+  const max=Math.max(...vals);
+  const unit=RESOURCE_META[modalState.resource]?.unit||'';
+  document.getElementById('msAvg').textContent=avg.toFixed(1)+unit;
+  document.getElementById('msMin').textContent=min.toFixed(1)+unit;
+  document.getElementById('msMax').textContent=max.toFixed(1)+unit;
+  document.getElementById('msPoints').textContent=d.length.toLocaleString();
+}
+
+function drawChart(){
+  const canvas=document.getElementById('chartCanvas');
+  const area=document.getElementById('modalChartArea');
+  const dpr=window.devicePixelRatio||1;
+
+  // Size canvas to parent
+  const rect=area.getBoundingClientRect();
+  const w=rect.width-32;
+  const h=rect.height-44;
+  if(w<=0||h<=0)return;
+
+  canvas.width=w*dpr;
+  canvas.height=h*dpr;
+  canvas.style.width=w+'px';
+  canvas.style.height=h+'px';
+
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  const pad={t:20,r:16,b:20,l:50};
+  const cw=w-pad.l-pad.r, ch=h-pad.t-pad.b;
+  const data=modalState.data;
+
+  // Clear
+  ctx.fillStyle='rgba(5,8,15,0)';
+  ctx.clearRect(0,0,w,h);
+
+  if(!data||data.length<2){
+    ctx.fillStyle='var(--txt3)'.replace('var(--txt3)','#64748b');
+    ctx.font='13px system-ui';
+    ctx.textAlign='center';
+    ctx.fillText('Not enough data for this time range',w/2,h/2);
+    return;
+  }
+
+  const vals=data.map(x=>x.v);
+  const times=data.map(x=>x.t);
+  let vMin=Math.min(...vals), vMax=Math.max(...vals);
+  const vRange=vMax-vMin||1;
+  vMin-=vRange*0.1; vMax+=vRange*0.1;
+
+  const tMin=times[0], tMax=times[times.length-1], tRange=tMax-tMin||1;
+  const color=getComputedStyle(document.documentElement).getPropertyValue('--cy').trim();
+
+  function xpos(t){return pad.l+((t-tMin)/tRange)*cw;}
+  function ypos(v){return pad.t+ch-((v-vMin)/(vMax-vMin))*ch;}
+
+  // Grid lines
+  ctx.strokeStyle='rgba(255,255,255,.04)';
+  ctx.lineWidth=1;
+  ctx.font='10px system-ui';
+  ctx.fillStyle='#64748b';
+  ctx.textAlign='right';
+
+  const nLines=5;
+  for(let i=0;i<=nLines;i++){
+    const y=pad.t+(ch/nLines)*i;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();
+    const v=vMax-((vMax-vMin)/nLines)*i;
+    ctx.fillText(v.toFixed(1),pad.l-4,y+3);
+  }
+
+  // X-axis labels
+  ctx.textAlign='center';
+  const nX=Math.min(5,Math.floor(cw/80));
+  for(let i=0;i<=nX;i++){
+    const x=pad.l+(cw/nX)*i;
+    const t=tMin+(tRange/nX)*i;
+    const d=new Date(t*1000);
+    const label=modalState.hours<=24?d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString([],{month:'short',day:'numeric'});
+    ctx.fillText(label,x,h-pad.b+16);
+  }
+
+  // Gradient fill
+  const grad=ctx.createLinearGradient(0,pad.t,0,h-pad.b);
+  const baseColor=getComputedStyle(document.documentElement).getPropertyValue('--cy').trim();
+  grad.addColorStop(0,baseColor+'40');
+  grad.addColorStop(1,baseColor+'05');
+  ctx.beginPath();
+  ctx.moveTo(xpos(times[0]),h-pad.b);
+  data.forEach(d=>{ctx.lineTo(xpos(d.t),ypos(d.v));});
+  ctx.lineTo(xpos(times[times.length-1]),h-pad.b);
+  ctx.closePath();
+  ctx.fillStyle=grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  data.forEach((d,i)=>{ctx[i===0?'moveTo':'lineTo'](xpos(d.t),ypos(d.v));});
+  ctx.strokeStyle=baseColor;
+  ctx.lineWidth=2.5;
+  ctx.lineJoin='round';
+  ctx.lineCap='round';
+  ctx.stroke();
+
+  // Glow
+  ctx.shadowColor=baseColor;
+  ctx.shadowBlur=12;
+  ctx.beginPath();
+  data.forEach((d,i)=>{ctx[i===0?'moveTo':'lineTo'](xpos(d.t),ypos(d.v));});
+  ctx.strokeStyle=baseColor+'40';
+  ctx.lineWidth=6;
+  ctx.stroke();
+  ctx.shadowBlur=0;
+
+  // Final dot
+  const last=data[data.length-1];
+  ctx.beginPath();
+  ctx.arc(xpos(last.t),ypos(last.v),4,0,Math.PI*2);
+  ctx.fillStyle=baseColor;
+  ctx.fill();
+  ctx.strokeStyle='rgba(10,14,23,.8)';
+  ctx.lineWidth=2;
+  ctx.stroke();
+
+  // Store for hover
+  modalState._chartData={data,vals,times,vMin,vMax,tMin,tRange,cw,ch,pad,w,h,xpos,ypos,color:baseColor};
+
+  // Setup hover
+  setupChartHover();
+}
+
+function setupChartHover(){
+  const canvas=document.getElementById('chartCanvas');
+  const ptr=document.getElementById('chartPointer');
+  const ptrVal=document.getElementById('cpVal');
+  const ptrTime=document.getElementById('cpTime');
+
+  canvas.onmousemove=canvas.ontouchmove=function(e){
+    const ev=e.touches?e.touches[0]:e;
+    const rect=canvas.getBoundingClientRect();
+    const mx=ev.clientX-rect.left;
+
+    const st=modalState._chartData;
+    if(!st||!st.data)return;
+
+    const x=mx;
+    // Find closest point
+    let minDist=Infinity,idx=0;
+    st.data.forEach((d,i)=>{
+      const dist=Math.abs(st.xpos(d.t)-x);
+      if(dist<minDist){minDist=dist;idx=i;}
+    });
+
+    const pt=st.data[idx];
+    const d=new Date(pt.t*1000);
+    const timeStr=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const unit=RESOURCE_META[modalState.resource]?.unit||'';
+    ptrVal.textContent=pt.v.toFixed(1)+unit;
+    ptrTime.textContent=timeStr;
+
+    const px=st.xpos(pt.t);
+    const py=st.ypos(pt.v);
+    ptr.style.display='block';
+    ptr.style.left=px+'px';
+    ptr.style.top=(py-12)+'px';
+
+    // Clamp to prevent overflow
+    const ptrRect=ptr.getBoundingClientRect();
+    const chartRect=document.getElementById('modalChartArea').getBoundingClientRect();
+    if(ptrRect.left<chartRect.left)ptr.style.left='0px';
+    if(ptrRect.right>chartRect.right)ptr.style.right='0px';ptr.style.left='auto';
+    if(ptrRect.top<chartRect.top)ptr.style.top='4px';
+  };
+
+  canvas.onmouseleave=function(){ptr.style.display='none';};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PWA INSTALL
+// ═══════════════════════════════════════════════════════════════════
+let deferredPrompt=null;
+const ib=document.getElementById('installBanner'),ibtn=document.getElementById('installBtn');
+if(!localStorage.getItem('pwaDismissed')){
+  window.addEventListener('beforeinstallprompt',e=>{
+    e.preventDefault();deferredPrompt=e;ib.classList.add('sh');
+    ibtn.onclick=async()=>{
+      ib.classList.remove('sh');
+      if(deferredPrompt){deferredPrompt.prompt();const r=await deferredPrompt.userChoice;if(r.outcome==='accepted')localStorage.setItem('pwaInstalled','1');deferredPrompt=null;}
+    };
+  });
+  window.addEventListener('appinstalled',()=>{ib.classList.remove('sh');localStorage.setItem('pwaInstalled','1');});
+}
+function dismissInstall(){ib.classList.remove('sh');localStorage.setItem('pwaDismissed','1');}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+
+// ═══ INIT ═══
+document.addEventListener('DOMContentLoaded',()=>{fetchData().then(()=>{rt=setTimeout(refreshNow,RF);});});
+</script>
+</body>
+</html>

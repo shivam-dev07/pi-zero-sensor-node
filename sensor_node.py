@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 # ═══════════════════════════════════════════════════════════════════
 
 # --- MQTT ---
-MQTT_HOST = "10.0.0.1"  # EdgeX gateway / MQTT broker
+MQTT_HOST = "YOUR_MQTT_BROKER_IP"  # EdgeX gateway / MQTT broker
 MQTT_PORT = 1883
 MQTT_TOPIC_PREFIX = "incoming/data"  # EdgeX device-mqtt incoming prefix
 MQTT_KEEPALIVE = 60
