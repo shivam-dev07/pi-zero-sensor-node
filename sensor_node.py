@@ -1,176 +1,464 @@
 #!/usr/bin/env python3
 """
-Pi Zero Sensor Node — EdgeX MQTT Publisher
-===========================================
-Publishes system metrics from a Raspberry Pi Zero 2W to an EdgeX Foundry
-IoT gateway via MQTT. Auto-reconnects on network failure.
+Pi Zero Sensor Node — EdgeX MQTT Publisher v2.0
+================================================
+Publishes system metrics from Raspberry Pi Zero 2W to EdgeX Foundry IoT gateway.
 
-Metrics Published:
-  - cpu_temp_c       (°C)
-  - cpu_load         (JSON: {1min: float})
-  - memory_used_pct  (%)
-  - uptime_s         (seconds)
-  - wifi_signal_dbm  (dBm)
-  - status           ("online")
+v2.0 Features:
+  - Per-resource EdgeX topics: each reading published to its own topic
+  - Deadband filtering: only publish when value changes significantly
+  - Moving average: smooth noisy readings before publishing
+  - SQLite offline buffer: store readings when MQTT is down
+  - Offline replay: send buffered data when broker reconnects
+  - Emergency priority: publish immediately on anomaly detection
 
-Architecture:
-  Pi Zero 2W  ──MQTT──►  EdgeX Gateway (Pi 5)
-                              │
-                              ├── Core Data (store)
-                              ├── eKuiper (rules engine)
-                              └── Alerts / Dashboard
+Minimal RAM: ~5 MB + sensor readings buffer
+Device:      Pi Zero 2W (512 MB RAM recommended)
 """
 
 import json
 import os
-import re
+import platform
+import sqlite3
+import sys
 import time
+import re
+from collections import deque
+from datetime import datetime, timezone
 
-import paho.mqtt.client as mqtt
+# ═══════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════
 
-# ═══════════════════════════════════════════════
-# CONFIGURATION — Edit these for your setup
-# ═══════════════════════════════════════════════
+# --- MQTT ---
+MQTT_HOST = "10.0.0.1"  # EdgeX gateway / MQTT broker
+MQTT_PORT = 1883
+MQTT_TOPIC_PREFIX = "incoming/data"  # EdgeX device-mqtt incoming prefix
+MQTT_KEEPALIVE = 60
 
-MQTT_HOST = "10.0.0.1"  # Change to your gateway IP       # EdgeX gateway IP
-MQTT_PORT = 1883                    # MQTT broker port
-DEVICE = "pizero1"                  # Unique device name (change per node)
-INTERVAL = 10                       # Seconds between publish cycles
+# --- Device Identity ---
+# Auto-detects from hostname. Override by creating /home/shivam/device_name file
+DEVICE_NAME_FILE = "/home/shivam/device_name"
 
-# EdgeX device profile resource names — one MQTT topic per resource
-RESOURCES = [
-    "cpu_temp_c",
-    "cpu_load",
-    "memory_used_pct",
-    "uptime_s",
-    "wifi_signal_dbm",
-    "status",
-]
+# --- Collection ---
+PUBLISH_INTERVAL = 10  # seconds
 
-# ═══════════════════════════════════════════════
-# SENSOR READERS
-# ═══════════════════════════════════════════════
+# === EDGE PROCESSING ===
 
+# 1. Deadband thresholds per resource
+DEADBAND = {
+    "temp": 0.5,        # °C
+    "load": 5.0,        # %
+    "memory": 3.0,      # %
+    "uptime": 0.5,      # hours
+    "wifi": 2,          # dBm
+    "disk": 2.0,        # %
+}
+HEARTBEAT_CYCLES = 6  # every 6 cycles, publish even if no change
 
-def get_cpu_temp() -> str:
-    """Read CPU temperature from /sys/class/thermal."""
+# 2. Moving average
+MOVING_AVG_WINDOW = 3  # number of readings (1 = disabled)
+
+# 3. SQLite offline buffer
+SQLITE_DB = "/home/shivam/sensor_buffer.db"
+MAX_BUFFER_SIZE = 10000
+
+# 4. Emergency thresholds
+EMERGENCY_TEMP_MAX = 80.0   # °C
+EMERGENCY_MEM_MAX = 90.0    # %
+EMERGENCY_COOLDOWN = 30     # seconds between emergency publishes
+
+# ═══════════════════════════════════════════════════════════════════
+# RESOURCE DEFINITIONS
+# ═══════════════════════════════════════════════════════════════════
+# Maps our internal keys to EdgeX device profile resource names
+# and their MQTT topic suffix.
+# Value must match the EdgeX device profile PiZero-Sensor-Profile.
+
+RESOURCES = {
+    "cpu_temp_c": {
+        "topic_suffix": "cpu_temp_c",
+        "getter": None,  # filled below
+        "deadband_key": "temp",
+        "unit": "C",
+        "precision": 1,
+    },
+    "cpu_load": {
+        "topic_suffix": "cpu_load",
+        "getter": None,
+        "deadband_key": "load",
+        "unit": "%",
+        "precision": 1,
+    },
+    "memory_used_pct": {
+        "topic_suffix": "memory_used_pct",
+        "getter": None,
+        "deadband_key": "memory",
+        "unit": "%",
+        "precision": 1,
+    },
+    "uptime_s": {
+        "topic_suffix": "uptime_s",
+        "getter": None,
+        "deadband_key": "uptime",
+        "unit": "hours",
+        "precision": 1,
+    },
+    "wifi_signal_dbm": {
+        "topic_suffix": "wifi_signal_dbm",
+        "getter": None,
+        "deadband_key": "wifi",
+        "unit": "dBm",
+        "precision": 0,
+    },
+    "status": {
+        "topic_suffix": "status",
+        "getter": None,
+        "deadband_key": None,  # always publishes
+        "unit": "",
+        "precision": 0,
+    },
+}
+
+# Moving average buffers per resource
+_buffers = {key: deque(maxlen=MOVING_AVG_WINDOW) for key in RESOURCES}
+
+# Deadband tracking
+_last_sent = {}
+_cycle = 0
+_last_emergency = 0
+
+# ═══════════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════════
+
+def get_device_name():
     try:
-        with open("/sys/class/thermal/thermal_zone0/temp") as f:
-            return str(round(float(f.read().strip()) / 1000, 1))
+        if os.path.exists(DEVICE_NAME_FILE):
+            with open(DEVICE_NAME_FILE) as f:
+                name = f.read().strip()
+                if name:
+                    return name
     except Exception:
-        return "0.0"
+        pass
+    return platform.node()
 
 
-def get_cpu_load() -> str:
-    """Read 1-minute CPU load average."""
+def read_sysfs(path, default=0.0):
     try:
-        return json.dumps({"1min": round(os.getloadavg()[0], 2)})
+        with open(path) as f:
+            return float(f.read().strip())
     except Exception:
-        return json.dumps({"1min": 0.0})
+        return default
 
 
-def get_memory_used() -> str:
-    """Calculate memory usage % from /proc/meminfo."""
+def get_cpu_temp():
+    temp_raw = read_sysfs("/sys/class/thermal/thermal_zone0/temp")
+    return round(temp_raw / 1000.0, 1)
+
+
+def get_cpu_load():
+    try:
+        load = os.getloadavg()[0]
+        cores = os.cpu_count() or 1
+        return round((load / cores) * 100, 1)
+    except Exception:
+        return 0.0
+
+
+def get_memory():
     try:
         with open("/proc/meminfo") as f:
             data = f.read()
-        total_m = int(re.search(r"MemTotal:\s+(\d+)", data).group(1))
-        free_m = int(re.search(r"MemAvailable:\s+(\d+)", data).group(1))
-        return str(round(100 - (free_m / total_m * 100), 1))
+        total = int(re.search(r"MemTotal:\s+(\d+)", data).group(1))
+        free = int(re.search(r"MemAvailable:\s+(\d+)", data).group(1))
+        return round((1 - free / total) * 100, 1)
     except Exception:
-        return "0.0"
+        return 0.0
 
 
-def get_uptime() -> str:
-    """Read system uptime in seconds."""
+def get_uptime():
     try:
         with open("/proc/uptime") as f:
-            return str(round(float(f.read().split()[0]), 1))
+            uptime_sec = float(f.read().split()[0])
+        return round(uptime_sec / 3600, 1)
     except Exception:
-        return "0.0"
+        return 0.0
 
 
-def get_wifi_signal() -> str:
-    """Read WiFi signal level from iwconfig."""
+def get_wifi_dbm():
     try:
-        out = os.popen(
-            'iwconfig 2>/dev/null | grep -o "Signal level=[^ ]*" | cut -d= -f2'
-        ).read().strip()
-        return out if out else "-300"
+        with open("/proc/net/wireless") as f:
+            for line in f.readlines()[2:]:
+                parts = line.strip().split()
+                if len(parts) >= 4:
+                    return int(parts[3].rstrip("."))
     except Exception:
-        return "-300"
+        pass
+    return 0
 
 
-def get_status() -> str:
-    """Always reports online while the process is running."""
+def get_status():
     return "online"
 
 
-# Map resource names to reader functions
-READINGS = {
-    "cpu_temp_c": get_cpu_temp,
-    "cpu_load": get_cpu_load,
-    "memory_used_pct": get_memory_used,
-    "uptime_s": get_uptime,
-    "wifi_signal_dbm": get_wifi_signal,
-    "status": get_status,
-}
-
-# ═══════════════════════════════════════════════
-# MQTT CLIENT
-# ═══════════════════════════════════════════════
-
-client = mqtt.Client(
-    mqtt.CallbackAPIVersion.VERSION2,
-    client_id=f"{DEVICE}-sensor",
-)
+# Wire up getters
+RESOURCES["cpu_temp_c"]["getter"] = get_cpu_temp
+RESOURCES["cpu_load"]["getter"] = get_cpu_load
+RESOURCES["memory_used_pct"]["getter"] = get_memory
+RESOURCES["uptime_s"]["getter"] = get_uptime
+RESOURCES["wifi_signal_dbm"]["getter"] = get_wifi_dbm
+RESOURCES["status"]["getter"] = get_status
 
 
-def publish(topic: str, payload: str) -> None:
-    """Publish with auto-reconnect on failure (2 attempts)."""
-    if not client.is_connected():
-        print("[reconnecting]")
-        client.reconnect()
-        time.sleep(1)
+def format_value(value, precision):
+    """Format value for MQTT — simple string that EdgeX can parse."""
+    if precision == 0:
+        return str(int(value))
+    return f"{value:.{precision}f}"
 
-    info = client.publish(topic, payload, qos=1)
+
+# ═══════════════════════════════════════════════════════════════════
+# EDGE PROCESSING: MOVING AVERAGE
+# ═══════════════════════════════════════════════════════════════════
+
+def moving_average(buffer, new_value):
+    """Simple moving average. For numeric values only; strings pass through."""
+    if not isinstance(new_value, (int, float)):
+        return new_value
+    buffer.append(new_value)
+    if MOVING_AVG_WINDOW <= 1:
+        return new_value
+    return round(sum(buffer) / len(buffer), 1)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# EDGE PROCESSING: DEADBAND FILTERING
+# ═══════════════════════════════════════════════════════════════════
+
+def should_publish(key, value):
+    """
+    Per-resource deadband check.
+    Publishes if:
+      - First time seeing this resource
+      - Value changed beyond threshold
+      - Heartbeat cycle reached
+    """
+    global _cycle
+    _cycle += 1
+
+    if key not in _last_sent:
+        _last_sent[key] = (value, _cycle)
+        return True
+
+    last_val, last_cycle = _last_sent[key]
+    deadband_def = DEADBAND
+
+    if isinstance(deadband_def, dict):
+        db = deadband_def.get(key, 0)
+    else:
+        db = 0
+
+    if abs(value - last_val) >= db:
+        _last_sent[key] = (value, _cycle)
+        return True
+
+    if (_cycle - last_cycle) >= HEARTBEAT_CYCLES:
+        _last_sent[key] = (value, _cycle)
+        return True
+
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════════
+# EDGE PROCESSING: EMERGENCY PRIORITY
+# ═══════════════════════════════════════════════════════════════════
+
+def is_emergency(temp, mem_pct):
+    global _last_emergency
+    now = time.time()
+    if now - _last_emergency < EMERGENCY_COOLDOWN:
+        return False
+    if temp >= EMERGENCY_TEMP_MAX or mem_pct >= EMERGENCY_MEM_MAX:
+        _last_emergency = now
+        return True
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════════
+# EDGE PROCESSING: SQLITE OFFLINE BUFFER
+# ═══════════════════════════════════════════════════════════════════
+
+def init_buffer():
+    conn = sqlite3.connect(SQLITE_DB, timeout=2)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sensor_buffer (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,
+            payload TEXT NOT NULL
+        )
+    """)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.commit()
+    conn.close()
+
+
+def buffer_store(topic, payload_str):
     try:
-        info.wait_for_publish(timeout=5)
-    except RuntimeError:
-        print("[publish failed, reconnecting]")
-        try:
-            client.reconnect()
-            time.sleep(1)
-            info = client.publish(topic, payload, qos=1)
-            info.wait_for_publish(timeout=5)
-        except Exception as e:
-            print(f"[fatal] {e}")
-            time.sleep(5)
+        conn = sqlite3.connect(SQLITE_DB, timeout=2)
+        conn.execute(
+            "INSERT INTO sensor_buffer (topic, payload) VALUES (?, ?)",
+            (topic, payload_str)
+        )
+        conn.execute(
+            "DELETE FROM sensor_buffer WHERE id <= (SELECT id FROM sensor_buffer ORDER BY id DESC LIMIT 1 OFFSET ?)",
+            (MAX_BUFFER_SIZE,)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[BUFFER] Write error: {e}", file=sys.stderr)
 
 
-# ═══════════════════════════════════════════════
+def buffer_replay(mqtt_client):
+    count = 0
+    try:
+        conn = sqlite3.connect(SQLITE_DB, timeout=2)
+        rows = conn.execute(
+            "SELECT id, topic, payload FROM sensor_buffer ORDER BY id ASC"
+        ).fetchall()
+        if not rows:
+            conn.close()
+            return 0
+        for row_id, topic, payload_str in rows:
+            try:
+                mqtt_client.publish(topic, payload_str, qos=1)
+                count += 1
+            except Exception:
+                continue
+        conn.execute("DELETE FROM sensor_buffer")
+        conn.commit()
+        conn.close()
+        if count > 0:
+            print(f"[BUFFER] Replayed {count} readings", file=sys.stderr)
+    except Exception as e:
+        print(f"[BUFFER] Replay error: {e}", file=sys.stderr)
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MQTT FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════
+
+def mqtt_connect(client):
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT, MQTT_KEEPALIVE)
+        client.loop_start()
+        return True
+    except Exception as e:
+        print(f"[MQTT] Connection failed: {e}", file=sys.stderr)
+        return False
+
+
+def mqtt_publish(client, topic, payload_str):
+    try:
+        result = client.publish(topic, payload_str, qos=1)
+        if result.rc == 0:
+            return True
+        else:
+            print(f"[MQTT] Publish rc={result.rc}", file=sys.stderr)
+            return False
+    except Exception as e:
+        print(f"[MQTT] Publish error: {e}", file=sys.stderr)
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════
 # MAIN LOOP
-# ═══════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 
 def main():
-    client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
-    client.loop_start()
-    print(f"[sensor] Connected to {MQTT_HOST}:{MQTT_PORT} as '{DEVICE}'")
+    import paho.mqtt.client as mqtt
+
+    device = get_device_name()
+    print(f"[START] Pi Zero Sensor Node v2 — EdgeX Resource Topics")
+    print(f"[START] Device: {device} | Broker: {MQTT_HOST}:{MQTT_PORT}")
+    print(f"[START] Moving Avg: {MOVING_AVG_WINDOW} | Buffer: {SQLITE_DB}")
+
+    init_buffer()
+
+    client = mqtt.Client(
+        client_id=f"pizero-{device}-{os.getpid()}",
+        protocol=mqtt.MQTTv311
+    )
+    client.reconnect_delay_set(min_delay=1, max_delay=120)
+    mqtt_connected = mqtt_connect(client)
+
+    resource_keys = list(RESOURCES.keys())
 
     while True:
-        for res in RESOURCES:
-            val = READINGS[res]()
-            topic = f"incoming/data/{DEVICE}/{res}"
-            publish(topic, val)
-            print(f"  [{res}] {val}")
+        try:
+            # === COLLECT RAW DATA ===
+            raw = {}
+            for key in resource_keys:
+                getter = RESOURCES[key]["getter"]
+                raw[key] = getter()
 
-        print(f"  --- {time.ctime()} ---")
-        time.sleep(INTERVAL)
+            # === MOVING AVERAGE ===
+            smoothed = {}
+            for key in resource_keys:
+                smoothed[key] = moving_average(_buffers[key], raw[key])
+
+            # === EMERGENCY CHECK ===
+            emergency = is_emergency(smoothed["cpu_temp_c"], smoothed["memory_used_pct"])
+
+            # === PUBLISH PER-RESOURCE TOPICS ===
+            if emergency:
+                print(f"[EMERGENCY] temp={smoothed['cpu_temp_c']}°C, "
+                      f"mem={smoothed['memory_used_pct']}%")
+
+            for key in resource_keys:
+                r = RESOURCES[key]
+                value = smoothed[key]
+                formatted = format_value(value, r["precision"])
+
+                # Deadband check (skip for status and emergency)
+                if r["deadband_key"] and not emergency:
+                    if not should_publish(r["deadband_key"], value):
+                        continue
+
+                topic = f"{MQTT_TOPIC_PREFIX}/{device}/{r['topic_suffix']}"
+
+                if mqtt_connected:
+                    ok = mqtt_publish(client, topic, formatted)
+                    if not ok:
+                        mqtt_connected = False
+                        buffer_store(topic, formatted)
+                        print(f"[BUFFER] Stored {topic} (MQTT down)")
+                else:
+                    buffer_store(topic, formatted)
+
+            # After publishing, replay buffer if connected
+            if mqtt_connected:
+                buffer_replay(client)
+
+            # Try reconnect if needed
+            if not mqtt_connected:
+                mqtt_connected = mqtt_connect(client)
+
+        except KeyboardInterrupt:
+            print("\n[STOP] Shutting down...")
+            break
+        except Exception as e:
+            print(f"[ERROR] {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+
+        time.sleep(PUBLISH_INTERVAL)
+
+    client.loop_stop()
+    client.disconnect()
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n[sensor] Shutting down.")
-        client.disconnect()
+    main()
