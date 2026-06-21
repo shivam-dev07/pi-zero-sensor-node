@@ -54,7 +54,7 @@ DEADBAND = {
     "wifi": 2,          # dBm
     "disk": 2.0,        # %
 }
-HEARTBEAT_CYCLES = 6  # every 6 cycles, publish even if no change
+HEARTBEAT_CYCLES = 3  # every 6 cycles, publish even if no change
 
 # 2. Moving average
 MOVING_AVG_WINDOW = 3  # number of readings (1 = disabled)
